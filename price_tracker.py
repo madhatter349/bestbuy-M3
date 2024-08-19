@@ -84,13 +84,15 @@ def fetch_price_data():
 # Store price data in the database
 def store_price_data(product_data):
     try:
-        sku_id = product_data['data']['productBySkuId']['skuId']
+        # Access the first element of the list
+        product = product_data[0]['data']['productBySkuId']
+        sku_id = product['skuId']
         timestamp = datetime.now().isoformat()
 
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
 
-        for option in product_data['data']['productBySkuId']['openBoxOptions']:
+        for option in product['openBoxOptions']:
             condition_type = option['type']
             price = option['product']['price']['customerPrice']
             pdp_url = option['product']['url']['pdp']
