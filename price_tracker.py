@@ -84,7 +84,6 @@ def fetch_price_data():
 # Store price data in the database
 def store_price_data(product_data):
     try:
-        # Access the first element of the list
         product = product_data[0]['data']['productBySkuId']
         sku_id = product['skuId']
         timestamp = datetime.now().isoformat()
@@ -128,19 +127,33 @@ def check_price_changes(sku_id):
     prices = cursor.fetchall()
     changes = []
 
-    # Compare the most recent price with the previous one
-    if len(prices) >= 2:
-        latest_price = prices[0][1]
-        previous_price = prices[1][1]
+    # Track the latest price for each condition type
+    latest_prices = {}
 
-        if latest_price != previous_price:
+    # Organize prices by condition type
+    for row in prices:
+        condition_type = row[0]
+        price = row[1]
+        timestamp = row[2]
+
+        if condition_type not in latest_prices:
+            latest_prices[condition_type] = {
+                'latest_price': price,
+                'timestamp': timestamp
+            }
+        elif price != latest_prices[condition_type]['latest_price']:
             change = {
-                'condition_type': prices[0][0],
-                'previous_price': previous_price,
-                'latest_price': latest_price,
-                'timestamp': prices[0][2]
+                'condition_type': condition_type,
+                'previous_price': latest_prices[condition_type]['latest_price'],
+                'latest_price': price,
+                'timestamp': timestamp
             }
             changes.append(change)
+            # Update the latest price after detecting a change
+            latest_prices[condition_type] = {
+                'latest_price': price,
+                'timestamp': timestamp
+            }
 
     conn.close()
     return changes
