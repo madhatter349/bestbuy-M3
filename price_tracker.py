@@ -93,7 +93,7 @@ def store_price_data(product_data):
     conn.commit()
     conn.close()
 
-# Check for price changes
+# Check for price changes and return changes if any
 def check_price_changes(sku_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -106,6 +106,7 @@ def check_price_changes(sku_id):
     ''', (sku_id,))
 
     prices = cursor.fetchall()
+    changes = []
 
     # Compare the most recent price with the previous one
     if len(prices) >= 2:
@@ -113,18 +114,76 @@ def check_price_changes(sku_id):
         previous_price = prices[1][1]
         
         if latest_price != previous_price:
-            print(f"Price for {prices[0][0]} condition has changed from ${previous_price} to ${latest_price}")
-    else:
-        print("Not enough data to compare prices.")
+            change = {
+                'condition_type': prices[0][0],
+                'previous_price': previous_price,
+                'latest_price': latest_price,
+                'timestamp': prices[0][2]
+            }
+            changes.append(change)
 
     conn.close()
+    return changes
+
+# Save price changes to a JSON file
+def save_price_changes(changes):
+    with open('price_change_result.json', 'w') as f:
+        json.dump(changes, f, indent=2)
+
+# Send email notification for price changes
+def send_email(changes):
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+    }
+
+    for change in changes:
+        body_content = f"""
+        <h2>Price Change Alert</h2>
+        <p>A price change has been detected:</p>
+        <ul>
+            <li>Condition: {change['condition_type']}</li>
+            <li>Previous Price: ${change['previous_price']}</li>
+            <li>New Price: ${change['latest_price']}</li>
+            <li>Timestamp: {change['timestamp']}</li>
+        </ul>
+        """
+
+        # Subject for the email
+        subject_title = f"Price Change for {change['condition_type']} Condition"
+
+        data = {
+            'to': 'madhatter349@gmail.com',
+            'subject': subject_title,
+            'body': body_content,
+            'type': 'text/html'
+        }
+
+        response = requests.post('https://www.cinotify.cc/api/notify', headers=headers, data=data)
+
+        log_debug(f"Email sending status code: {response.status_code}")
+        log_debug(f"Email sending response: {response.text}")
+
+        if response.status_code != 200:
+            log_debug(f"Failed to send email for condition: {change['condition_type']}. Status code: {response.status_code}")
+        else:
+            log_debug(f"Email sent successfully for condition: {change['condition_type']}")
+
+    return True  # Return True if the process completes, even if some emails fail
+
+def log_debug(message):
+    with open('debug.log', 'a') as f:
+        f.write(f"{datetime.now()}: {message}\n")
 
 def main():
     init_db()
     product_data = fetch_price_data()
     store_price_data(product_data)
     sku_id = product_data['data']['productBySkuId']['skuId']
-    check_price_changes(sku_id)
+    changes = check_price_changes(sku_id)
+    
+    if changes:
+        save_price_changes(changes)
+        send_email(changes)
 
 if __name__ == "__main__":
     main()
